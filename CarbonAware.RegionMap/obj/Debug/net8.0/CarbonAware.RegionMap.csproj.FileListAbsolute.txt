@@ -1,0 +1,15 @@
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\bin\Debug\net8.0\CarbonAware.RegionMap.deps.json
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\bin\Debug\net8.0\CarbonAware.RegionMap.dll
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\bin\Debug\net8.0\CarbonAware.RegionMap.pdb
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.AssemblyInfoInputs.cache
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.AssemblyInfo.cs
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.csproj.CoreCompileInputs.cache
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.dll
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\refint\CarbonAware.RegionMap.dll
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.pdb
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\ref\CarbonAware.RegionMap.dll
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAware.RegionMap.csproj.AssemblyReference.cache
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\bin\Debug\net8.0\CarbonAware.Core.dll
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\bin\Debug\net8.0\CarbonAware.Core.pdb
+C:\Users\vargs\source\repos\CarbonAware.RegionMap\obj\Debug\net8.0\CarbonAw.E917A201.Up2Date

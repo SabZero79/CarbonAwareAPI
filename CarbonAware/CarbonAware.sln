@@ -1,0 +1,49 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35303.130
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarbonAware.Api", "..\CarbonAware.Api\CarbonAware.Api.csproj", "{86208675-9F9E-4949-92A9-66251EC641C7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarbonAware.Core", "..\CarbonAware.Core\CarbonAware.Core.csproj", "{07174931-25B0-4EEB-92AE-91201996C7D8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarbonAware.Providers", "..\CarbonAware.Providers\CarbonAware.Providers.csproj", "{7E6F35D0-158A-45BC-B61E-220E69809732}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarbonAware.RegionMap", "..\CarbonAware.RegionMap\CarbonAware.RegionMap.csproj", "{D323325A-1CC5-4526-AA31-7258206ACCA8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarbonAware.Targets", "..\CarbonAware.Targets\CarbonAware.Targets.csproj", "{7EE9D5F7-075C-43EC-A409-5825584960C1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{86208675-9F9E-4949-92A9-66251EC641C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86208675-9F9E-4949-92A9-66251EC641C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86208675-9F9E-4949-92A9-66251EC641C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86208675-9F9E-4949-92A9-66251EC641C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{07174931-25B0-4EEB-92AE-91201996C7D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07174931-25B0-4EEB-92AE-91201996C7D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07174931-25B0-4EEB-92AE-91201996C7D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07174931-25B0-4EEB-92AE-91201996C7D8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7E6F35D0-158A-45BC-B61E-220E69809732}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E6F35D0-158A-45BC-B61E-220E69809732}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7E6F35D0-158A-45BC-B61E-220E69809732}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E6F35D0-158A-45BC-B61E-220E69809732}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D323325A-1CC5-4526-AA31-7258206ACCA8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D323325A-1CC5-4526-AA31-7258206ACCA8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D323325A-1CC5-4526-AA31-7258206ACCA8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D323325A-1CC5-4526-AA31-7258206ACCA8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7EE9D5F7-075C-43EC-A409-5825584960C1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7EE9D5F7-075C-43EC-A409-5825584960C1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7EE9D5F7-075C-43EC-A409-5825584960C1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7EE9D5F7-075C-43EC-A409-5825584960C1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CB5CF62A-4C4B-42C9-8352-F79C9EB94FB4}
+	EndGlobalSection
+EndGlobal

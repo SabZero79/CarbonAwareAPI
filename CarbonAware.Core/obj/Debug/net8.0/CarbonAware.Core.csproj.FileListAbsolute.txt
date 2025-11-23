@@ -1,0 +1,11 @@
+C:\Users\vargs\source\repos\CarbonAware.Core\bin\Debug\net8.0\CarbonAware.Core.deps.json
+C:\Users\vargs\source\repos\CarbonAware.Core\bin\Debug\net8.0\CarbonAware.Core.dll
+C:\Users\vargs\source\repos\CarbonAware.Core\bin\Debug\net8.0\CarbonAware.Core.pdb
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\CarbonAware.Core.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\CarbonAware.Core.AssemblyInfoInputs.cache
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\CarbonAware.Core.AssemblyInfo.cs
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\CarbonAware.Core.csproj.CoreCompileInputs.cache
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\CarbonAware.Core.dll
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\refint\CarbonAware.Core.dll
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\CarbonAware.Core.pdb
+C:\Users\vargs\source\repos\CarbonAware.Core\obj\Debug\net8.0\ref\CarbonAware.Core.dll
