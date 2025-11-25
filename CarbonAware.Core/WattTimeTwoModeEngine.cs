@@ -131,7 +131,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        var best = moerRows.OrderBy(s => s.moer!.Value).First();
+        var best = PickBestWithCloudPreference(moerRows,x => x.moer,x => x.cloud,policy.CloudPreference);
         var highest = moerRows.OrderByDescending(s => s.moer!.Value).First();
         var avgMoer = moerRows.Average(s => s.moer!.Value);
         var avgSavingPct = avgMoer > 0
@@ -142,7 +142,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         {
             Cloud = m.cloud,
             Region = m.region,
-            MoerAtTarget = m.moer
+            MoerAtTarget = ConvertTogperKwh(m.moer)
         });
 
         await _audit.LogAdviceAsync(new AdviceRecord
@@ -157,17 +157,17 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             SelectedCloud = best.cloud,
             SelectedRegion = best.region,
             SelectedWhen = target,
-            SelectedMoerGPerKwh = best.moer,
-            Rationale = $"run_now: cleanest now is {best.cloud}:{best.region} ({best.moer:F1} g/kWh, via watttime.v3.forecast@now)",
+            SelectedMoerGPerKwh = ConvertTogperKwh(best.moer),
+            Rationale = $"run_now: cleanest now is {best.cloud}:{best.region} ({ConvertTogperKwh(best.moer):F1} g/kWh, via watttime.v3.forecast@now)",
 
             HighestEmissionCloud = highest.cloud,
             HighestEmissionRegion = highest.region,
-            HighestEmissionGPerKwh = highest.moer,
-            EstimatedSavingGPerKwh = highest.moer - best.moer,
+            HighestEmissionGPerKwh = ConvertTogperKwh(highest.moer),
+            EstimatedSavingGPerKwh = ConvertTogperKwh(highest.moer - best.moer),
             EstimatedSavingPercent = highest.moer > 0
                 ? 100.0 * (highest.moer.Value - best.moer.Value) / highest.moer.Value
                 : (double?)null,
-            AverageEmissionGPerKwh = avgMoer,
+            AverageEmissionGPerKwh = ConvertTogperKwh(avgMoer),
             AverageEstimatedSavingPercent = avgSavingPct,
 
             BestWindowCloud = null,
@@ -181,11 +181,11 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             Cloud: best.cloud,
             Region: best.region,
             When: target,
-            Rationale: $"run_now: cleanest now is {best.cloud}:{best.region} ({best.moer:F1} g/kWh, via watttime.v3.forecast@now)",
-            EstimatedIntensityGPerKwh: best.moer,
+            Rationale: $"run_now: cleanest now is {best.cloud}:{best.region} ({ConvertTogperKwh(best.moer):F1} g/kWh, via watttime.v3.forecast@now)",
+            EstimatedIntensityGPerKwh: ConvertTogperKwh(best.moer),
             HighestEmissionCloud: highest.cloud,
             HighestEmissionRegion: highest.region,
-            HighestEmissionGPerKwh: highest.moer,
+            HighestEmissionGPerKwh: ConvertTogperKwh(highest.moer),
             AverageEstimatedSavingPercent: avgSavingPct
         );
     }
@@ -194,13 +194,13 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
     // schedule_at (single-point, window [from..until])
     // ----------------------------------------------------------------
     private async Task<AdviceResult> AdviseScheduleAtAsync(
-        JobSpec job,
-        PolicySpec policy,
-        List<(string cloud, string region, string zone)> candidates,
-        DateTimeOffset from,
-        DateTimeOffset until,
-        CorrelationContext correlation,
-        CancellationToken ct)
+    JobSpec job,
+    PolicySpec policy,
+    List<(string cloud, string region, string zone)> candidates,
+    DateTimeOffset from,
+    DateTimeOffset until,
+    CorrelationContext correlation,
+    CancellationToken ct)
     {
         if (_signals is not IBestWindowSignalProvider bestProv)
         {
@@ -215,27 +215,24 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        var perCandidateBest = new List<(string cloud, string region, double? bestMoer, DateTimeOffset? at)>();
-
-        string? bwCloud = null, bwRegion = null;
-        double? bwMoer = null;
-        DateTimeOffset? bwWhen = null;
+        // -----------------------------------------
+        // 1. Gather best-per-candidate values
+        // -----------------------------------------
+        var perCandidate = new List<(string cloud, string region, double? bestMoer, DateTimeOffset? at)>();
 
         foreach (var (cloud, region, zone) in candidates)
         {
-            var (bestMoer, at, _h) = await bestProv.GetBestUntilAsync(zone, until, ct);
-            perCandidateBest.Add((cloud, region, bestMoer, at));
+            var (bestMoer, bestAt, _h) =
+                await bestProv.GetBestUntilAsync(zone, until, ct);
 
-            if (bestMoer.HasValue && (bwMoer is null || bestMoer.Value < bwMoer.Value))
-            {
-                bwMoer = bestMoer.Value;
-                bwWhen = at;
-                bwCloud = cloud;
-                bwRegion = region;
-            }
+            perCandidate.Add((cloud, region, bestMoer, bestAt));
         }
 
-        if (bwMoer is null || bwWhen is null)
+        var usable = perCandidate
+            .Where(x => x.bestMoer.HasValue)
+            .ToList();
+
+        if (usable.Count == 0)
         {
             var fb = ResolveFallback(job, policy);
             return new AdviceResult(
@@ -247,34 +244,50 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        var usable = perCandidateBest.Where(x => x.bestMoer.HasValue).ToList();
+        // -----------------------------------------
+        // 2. Use cloud preference to pick winner
+        // -----------------------------------------
+        var best = PickBestWithCloudPreference(
+            usable,
+            x => x.bestMoer,
+            x => x.cloud,
+            policy.CloudPreference
+        );
 
-        (string cloud, string region, double moer)? highestByBest = null;
-        double? avgByBest = null;
+        string bwCloud = best.cloud;
+        string bwRegion = best.region;
+        double bwMoer = best.bestMoer!.Value;
+        DateTimeOffset bwWhen = best.at!.Value;
 
-        if (usable.Count > 0)
-        {
-            highestByBest = usable
-                .OrderByDescending(x => x.bestMoer!.Value)
-                .Select(x => (x.cloud, x.region, x.bestMoer!.Value))
-                .First();
+        // -----------------------------------------
+        // 3. Compute highest + average for summary
+        // -----------------------------------------
+        var highestByBest = usable
+            .OrderByDescending(x => x.bestMoer!.Value)
+            .Select(x => (x.cloud, x.region, x.bestMoer!.Value))
+            .First();
 
-            avgByBest = usable.Average(x => x.bestMoer!.Value);
-        }
+        double avgByBest = usable.Average(x => x.bestMoer!.Value);
 
-        var avgSavingPctByBest =
-            (avgByBest.HasValue && avgByBest.Value > 0)
-                ? 100.0 * (avgByBest.Value - bwMoer.Value) / avgByBest.Value
+        double? avgSavingPct =
+            avgByBest > 0
+                ? 100.0 * (avgByBest - bwMoer) / avgByBest
                 : (double?)null;
 
+        // -----------------------------------------
+        // 4. Candidate log
+        // -----------------------------------------
         IEnumerable<AdviceCandidateRecord> candLog = usable.Select(m => new AdviceCandidateRecord
         {
             Cloud = m.cloud,
             Region = m.region,
-            BestMoerUntilTarget = m.bestMoer,
+            BestMoerUntilTarget = ConvertTogperKwh(m.bestMoer),
             BestMoerAt = m.at
         });
 
+        // -----------------------------------------
+        // 5. Rationale string
+        // -----------------------------------------
         var localTz = TimeZoneInfo.Local;
         const string RATIONALE_FMT = "yyyy-MM-dd-HH:mm";
 
@@ -287,14 +300,17 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             .ToString(RATIONALE_FMT);
 
         string bwLocalStr = TimeZoneInfo
-            .ConvertTime(bwWhen!.Value.UtcDateTime, localTz)
+            .ConvertTime(bwWhen.UtcDateTime, localTz)
             .ToString(RATIONALE_FMT);
 
         var rationaleText =
             $"schedule until: best window within [{fromLocalStr}..{untilLocalStr}] " +
-            $"is {bwCloud}:{bwRegion} @ {bwLocalStr} ({bwMoer:F1} g/kWh, via watttime.v3.forecast@best-until). " +
+            $"is {bwCloud}:{bwRegion} @ {bwLocalStr} ({ConvertTogperKwh(bwMoer):F1} g/kWh, via watttime.v3.forecast@best-until). " +
             "Savings vs candidates' best-until-target shown below.";
 
+        // -----------------------------------------
+        // 6. Audit log
+        // -----------------------------------------
         await _audit.LogAdviceAsync(new AdviceRecord
         {
             Mode = "schedule_at",
@@ -304,45 +320,50 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
                 ? string.Join(",", policy.PreferredRegions)
                 : null,
 
-            SelectedCloud = bwCloud!,
-            SelectedRegion = bwRegion!,
+            SelectedCloud = bwCloud,
+            SelectedRegion = bwRegion,
             SelectedWhen = bwWhen,
-            SelectedMoerGPerKwh = bwMoer,
+            SelectedMoerGPerKwh = ConvertTogperKwh(bwMoer),
             Rationale = rationaleText,
 
-            HighestEmissionCloud = highestByBest?.cloud,
-            HighestEmissionRegion = highestByBest?.region,
-            HighestEmissionGPerKwh = highestByBest?.moer,
-            EstimatedSavingGPerKwh = highestByBest?.moer - bwMoer,
-            EstimatedSavingPercent = (highestByBest?.moer > 0)
-                ? 100.0 * (highestByBest.Value.moer - bwMoer.Value) / highestByBest.Value.moer
-                : (double?)null,
-            AverageEmissionGPerKwh = avgByBest,
-            AverageEstimatedSavingPercent = avgSavingPctByBest,
+            HighestEmissionCloud = highestByBest.cloud,
+            HighestEmissionRegion = highestByBest.region,
+            HighestEmissionGPerKwh = ConvertTogperKwh(highestByBest.Value),
+            EstimatedSavingGPerKwh = ConvertTogperKwh(highestByBest.Value - bwMoer),
+            EstimatedSavingPercent =
+                highestByBest.Value > 0
+                    ? 100.0 * (highestByBest.Value - bwMoer) / highestByBest.Value
+                    : (double?)null,
+            AverageEmissionGPerKwh = ConvertTogperKwh(avgByBest),
+            AverageEstimatedSavingPercent = avgSavingPct,
 
             BestWindowCloud = bwCloud,
             BestWindowRegion = bwRegion,
-            BestWindowMoerGPerKwh = bwMoer,
+            BestWindowMoerGPerKwh = ConvertTogperKwh(bwMoer),
             BestWindowWhen = bwWhen,
             RequestId = correlation.Current
         }, candLog, ct);
 
+        // -----------------------------------------
+        // 7. Return final result
+        // -----------------------------------------
         return new AdviceResult(
-            Cloud: bwCloud!,
-            Region: bwRegion!,
-            When: bwWhen!.Value,
+            Cloud: bwCloud,
+            Region: bwRegion,
+            When: bwWhen,
             Rationale: rationaleText,
-            EstimatedIntensityGPerKwh: bwMoer,
-            HighestEmissionCloud: highestByBest?.cloud,
-            HighestEmissionRegion: highestByBest?.region,
-            HighestEmissionGPerKwh: highestByBest?.moer,
-            AverageEstimatedSavingPercent: avgSavingPctByBest,
+            EstimatedIntensityGPerKwh: ConvertTogperKwh(bwMoer),
+            HighestEmissionCloud: highestByBest.cloud,
+            HighestEmissionRegion: highestByBest.region,
+            HighestEmissionGPerKwh: ConvertTogperKwh(highestByBest.Value),
+            AverageEstimatedSavingPercent: avgSavingPct,
             BestWindowCloud: bwCloud,
             BestWindowRegion: bwRegion,
-            BestWindowMoerGPerKwh: bwMoer,
+            BestWindowMoerGPerKwh: ConvertTogperKwh(bwMoer),
             BestWindowWhen: bwWhen
         );
     }
+
 
     // ----------------------------------------------------------------
     // run_now + batch
@@ -382,7 +403,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        var best = usable.OrderBy(r => r.avg!.Value).First();
+        var best = PickBestWithCloudPreference(usable,x => x.avg,x => x.cloud,policy.CloudPreference);
         var highest = usable.OrderByDescending(r => r.avg!.Value).First();
         var avgAll = usable.Average(r => r.avg!.Value);
         var avgSavingPct = avgAll > 0
@@ -393,7 +414,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         {
             Cloud = r.cloud,
             Region = r.region,
-            MoerAtTarget = r.avg
+            MoerAtTarget = ConvertTogperKwh(r.avg)
         });
 
         await _audit.LogAdviceAsync(new AdviceRecord
@@ -408,18 +429,18 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             SelectedCloud = best.cloud,
             SelectedRegion = best.region,
             SelectedWhen = now,
-            SelectedMoerGPerKwh = best.avg,
-            Rationale = $"run_now batch ({batchMinutes} min): cleanest average over next {batchMinutes} minutes is {best.cloud}:{best.region} ({best.avg:F1} g/kWh).",
+            SelectedMoerGPerKwh = ConvertTogperKwh(best.avg),
+            Rationale = $"run_now batch ({batchMinutes} min): cleanest average over next {batchMinutes} minutes is {best.cloud}:{best.region} ({ConvertTogperKwh(best.avg):F1} g/kWh).",
 
             HighestEmissionCloud = highest.cloud,
             HighestEmissionRegion = highest.region,
-            HighestEmissionGPerKwh = highest.avg,
-            EstimatedSavingGPerKwh = highest.avg - best.avg,
+            HighestEmissionGPerKwh = ConvertTogperKwh(highest.avg),
+            EstimatedSavingGPerKwh = ConvertTogperKwh(highest.avg - best.avg),
             EstimatedSavingPercent = (highest.avg > 0)
                 ? 100.0 * (highest.avg.Value - best.avg.Value) / highest.avg.Value
                 : (double?)null,
             AverageEstimatedSavingPercent = avgSavingPct,
-            AverageEmissionGPerKwh = avgAll,
+            AverageEmissionGPerKwh = ConvertTogperKwh(avgAll),
             RequestId = correlation.Current
         }, candLog, ct);
 
@@ -427,11 +448,11 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             Cloud: best.cloud,
             Region: best.region,
             When: now,
-            Rationale: $"run_now batch ({batchMinutes} min): cleanest average over next {batchMinutes} minutes is {best.cloud}:{best.region} ({best.avg:F1} g/kWh).",
-            EstimatedIntensityGPerKwh: best.avg,
+            Rationale: $"run_now batch ({batchMinutes} min): cleanest average over next {batchMinutes} minutes is {best.cloud}:{best.region} ({ConvertTogperKwh(best.avg):F1} g/kWh).",
+            EstimatedIntensityGPerKwh: ConvertTogperKwh(best.avg),
             HighestEmissionCloud: highest.cloud,
             HighestEmissionRegion: highest.region,
-            HighestEmissionGPerKwh: highest.avg,
+            HighestEmissionGPerKwh: ConvertTogperKwh(highest.avg),
             AverageEstimatedSavingPercent: avgSavingPct
         );
     }
@@ -496,7 +517,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        var best = usable.OrderBy(x => x.BestAvg!.Value).First();
+        var best = PickBestWithCloudPreference(usable, x => x.BestAvg, x => x.Cloud, policy.CloudPreference);
         var highest = usable.OrderByDescending(x => x.BestAvg!.Value).First();
         var avgAll = usable.Average(x => x.BestAvg!.Value);
 
@@ -526,14 +547,14 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         var rationale =
             $"schedule_until_batch: best {batchMinutes} min window within [{Fmt(fromLocal)}..{Fmt(untilLocal)}] is " +
             $"{best.Cloud}:{best.Region} starting at {Fmt(bestLocal)} " +
-            $"({bestAvg:F1} g/kWh avg, via watttime.v3.forecast@batch-best-until). " +
+            $"({ConvertTogperKwh(bestAvg):F1} g/kWh avg, via watttime.v3.forecast@batch-best-until). " +
             "Savings vs candidates' best batch windows shown below.";
 
         IEnumerable<AdviceCandidateRecord> candLog = usable.Select(c => new AdviceCandidateRecord
         {
             Cloud = c.Cloud,
             Region = c.Region,
-            BestMoerUntilTarget = c.BestAvg,
+            BestMoerUntilTarget = ConvertTogperKwh(c.BestAvg),
             BestMoerAt = c.Start
         });
 
@@ -549,20 +570,20 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             SelectedCloud = best.Cloud,
             SelectedRegion = best.Region,
             SelectedWhen = bestStartUtc,
-            SelectedMoerGPerKwh = bestAvg,
+            SelectedMoerGPerKwh = ConvertTogperKwh(bestAvg),
             Rationale = rationale,
 
             HighestEmissionCloud = highest.Cloud,
             HighestEmissionRegion = highest.Region,
-            HighestEmissionGPerKwh = highestAvg,
-            EstimatedSavingGPerKwh = savingVsHighestG,
+            HighestEmissionGPerKwh = ConvertTogperKwh(highestAvg),
+            EstimatedSavingGPerKwh = ConvertTogperKwh(savingVsHighestG),
             EstimatedSavingPercent = savingVsHighestPct,
             AverageEstimatedSavingPercent = savingVsAveragePct,
-            AverageEmissionGPerKwh = avgAll,
+            AverageEmissionGPerKwh = ConvertTogperKwh(avgAll),
 
             BestWindowCloud = best.Cloud,
             BestWindowRegion = best.Region,
-            BestWindowMoerGPerKwh = bestAvg,
+            BestWindowMoerGPerKwh = ConvertTogperKwh(bestAvg),
             BestWindowWhen = bestStartUtc,
             RequestId = correlation.Current
         }, candLog, ct);
@@ -572,14 +593,14 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             Region: best.Region,
             When: bestStartUtc,
             Rationale: rationale,
-            EstimatedIntensityGPerKwh: bestAvg,
+            EstimatedIntensityGPerKwh: ConvertTogperKwh(bestAvg),
             HighestEmissionCloud: highest.Cloud,
             HighestEmissionRegion: highest.Region,
-            HighestEmissionGPerKwh: highestAvg,
+            HighestEmissionGPerKwh: ConvertTogperKwh(highestAvg),
             AverageEstimatedSavingPercent: savingVsAveragePct,
             BestWindowCloud: best.Cloud,
             BestWindowRegion: best.Region,
-            BestWindowMoerGPerKwh: bestAvg,
+            BestWindowMoerGPerKwh: ConvertTogperKwh(bestAvg),
             BestWindowWhen: bestStartUtc
         );
     }
@@ -637,4 +658,59 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
                 StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Cloud),
                 StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Region));
     }
+    private static string NormalizeCloud(string? c) =>
+    string.IsNullOrWhiteSpace(c) ? string.Empty : c.Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Among candidates with the lowest MOER, prefer clouds according to policy.CloudPreference.
+    /// If no preference is given or it doesn’t match, falls back to the first lowest-MOER candidate.
+    /// </summary>
+    private static T PickBestWithCloudPreference<T>(
+        IEnumerable<T> candidates,
+        Func<T, double?> moerSelector,
+        Func<T, string> cloudSelector,
+        IReadOnlyList<string>? cloudPreference)
+    {
+        var list = candidates
+            .Where(c =>
+            {
+                var m = moerSelector(c);
+                return m.HasValue && double.IsFinite(m.Value);
+            })
+            .ToList();
+
+        if (list.Count == 0)
+            throw new InvalidOperationException("PickBestWithCloudPreference called with no usable candidates.");
+
+        var minMoer = list.Min(c => moerSelector(c)!.Value);
+        const double Eps = 1e-6;
+
+        var winners = list
+            .Where(c => Math.Abs(moerSelector(c)!.Value - minMoer) <= Eps)
+            .ToList();
+
+        // If only one winner or no preference specified → just return first
+        if (winners.Count == 1 || cloudPreference is null || cloudPreference.Count == 0)
+            return winners[0];
+
+        var prefNorm = cloudPreference.Select(NormalizeCloud).ToList();
+
+        foreach (var prefCloud in prefNorm)
+        {
+            var idx = winners.FindIndex(c =>
+                NormalizeCloud(cloudSelector(c)) == prefCloud);
+
+            if (idx >= 0)
+                return winners[idx];
+        }
+
+        // No winner matched any preferred cloud → just return first
+        return winners[0];
+    }
+
+    private double? ConvertTogperKwh(double? lbsperMwh)
+    {
+        return lbsperMwh * 0.45359237 / 1000.0;
+    }
+
 }

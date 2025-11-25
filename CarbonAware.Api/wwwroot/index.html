@@ -407,20 +407,31 @@
                 </div>
             </div>
 
-            <!-- Fallback -->
-            <div class="ctl" style="display:flex; flex-direction:column; justify-content:flex-start;">
-                <label for="fallback" style="margin-bottom:6px;">Fallback location</label>
-
-                <div style="margin-top:52px;">
-                    <!-- push dropdown down to align with datetime inputs -->
-                    <select id="fallback" style="width:100%;"></select>
-                </div>
-
-                <div class="muted" style="margin-top:6px;">
-                    Used if no usable MOER is available for selected region(s).
+            <!-- Fallback + Cloud Preference -->
+            <div class="ctl">
+                <label for="fallback">Fallback location</label>
+                <select id="fallback"></select>
+                <div class="muted">Used if no usable MOER is available for selected region(s).</div>
+                <!-- Cloud preference (tie-breaker) -->
+                <div style="margin-top:16px; padding-top:12px; border-top:1px solid #1f2937;">
+                    <label for="cloud-pref">Cloud preference (tie-breaker)</label>
+                    <select id="cloud-pref">
+                        <option value="azure,aws,gcp">Azure → AWS → GCP</option>
+                        <option value="azure,gcp,aws">Azure → GCP → AWS</option>
+                        <option value="aws,azure,gcp">AWS → Azure → GCP</option>
+                        <option value="aws,gcp,azure">AWS → GCP → Azure</option>
+                        <option value="gcp,azure,aws">GCP → Azure → AWS</option>
+                        <option value="gcp,aws,azure">GCP → AWS → Azure</option>
+                    </select>
+                    <div class="muted">
+                        Used only when two or more regions tie on MOER across different clouds.
+                    </div>
                 </div>
             </div>
+
+
         </div>
+
 
         <!-- ACTIONS -->
         <div class="actions" id="main-actions">
@@ -643,89 +654,79 @@
             return `${y}-${m}-${d}T${hh}:${mm}`;
         }
 
-        function recomputeScheduleWindowConstraints() {
+        // --- Schedule window validation (only when clicking Advise / Schedule) ---
+
+        function validateScheduleWindow() {
             const mode = document.querySelector('input[name="mode"]:checked')?.value;
-            if (mode !== 'schedule_at') return;
+            if (mode !== "schedule_at") {
+                // No schedule window constraints in run_now mode
+                return true;
+            }
+
+            const fromRaw = scheduleFromInput.value;
+            const untilRaw = scheduleUntilInput.value;
+
+            const from = new Date(fromRaw);
+            const until = new Date(untilRaw);
+
+            if (!fromRaw || isNaN(from.getTime())) {
+                alert("Please set a valid 'Schedule from' time.");
+                return false;
+            }
+
+            if (!untilRaw || isNaN(until.getTime())) {
+                alert("Please set a valid 'Schedule until' time.");
+                return false;
+            }
+
+            if (until <= from) {
+                alert("'Schedule until' must be later than 'Schedule from'.");
+                return false;
+            }
 
             const workloadType = getSelectedWorkloadType();
-
-            // If "from" is empty, initialize it once
-            if (!scheduleFromInput.value) {
-                const now = new Date();
-                const ms5 = 5 * 60 * 1000;
-                const rounded = new Date(Math.ceil(now.getTime() / ms5) * ms5);
-                scheduleFromInput.value = formatLocalForInput(rounded);
-            }
-
-            // Compute minimal gap for the "until" min
-            const from = new Date(scheduleFromInput.value);
-            if (Number.isNaN(from.getTime())) return;
-
-            let batchMinutes = 0;
-            if (workloadType === 'batch') {
+            if (workloadType === "batch") {
                 const raw = parseInt(batchInput.value, 10);
-                if (!Number.isNaN(raw)) batchMinutes = raw;
+                if (isNaN(raw) || raw <= 0) {
+                    alert("Please enter a valid batch duration in minutes.");
+                    return false;
+                }
+
+                // Clamp into your allowed range, but don't mutate the input here
+                const batchMinutes = Math.max(5, Math.min(300, raw));
+
+                const diffMinutes = (until - from) / 60000; // ms → minutes
+                if (diffMinutes < batchMinutes) {
+                    alert(
+                        `Batch window (${batchMinutes} minutes) does not fit inside the schedule window ` +
+                        `(${diffMinutes.toFixed(1)} minutes). Increase 'Schedule until' or reduce batch duration.`
+                    );
+                    return false;
+                }
             }
 
-            const baseMinutes = workloadType === 'batch'
-                ? Math.max(5, batchMinutes) + 5
-                : 5;
-
-            const minEndDate = new Date(from.getTime() + baseMinutes * 60000);
-            const minEndStr = formatLocalForInput(minEndDate);
-
-            // Only set the "min" attribute; do NOT clobber the current user value
-            scheduleUntilInput.min = minEndStr;
-
-            // If "until" is empty, initialize it, otherwise leave user edits as-is
-            if (!scheduleUntilInput.value) {
-                scheduleUntilInput.value = minEndStr;
-            }
+            return true;
         }
 
-
+        // Mode toggle: just enable/disable the controls, no auto-correction
         document.querySelectorAll('input[name="mode"]').forEach(r => {
             r.addEventListener('change', () => {
                 const isSchedule = (r.value === 'schedule_at' && r.checked);
                 scheduleFromInput.disabled = !isSchedule;
                 scheduleUntilInput.disabled = !isSchedule;
-
-                if (isSchedule) {
-                    // Initialize only if empty, then set min constraint
-                    recomputeScheduleWindowConstraints();
-                }
             });
         });
 
-
+        // Workload type toggle: just enable/disable batch input
         document.querySelectorAll('input[name="workloadType"]').forEach(r => {
             r.addEventListener('change', () => {
                 const isBatch = (r.value === 'batch' && r.checked);
                 batchInput.disabled = !isBatch;
-                if (document.querySelector('input[name="mode"]:checked')?.value === 'schedule_at') {
-                    recomputeScheduleWindowConstraints();
-                }
             });
         });
 
+        // No more change/input handlers that rewrite the datetime fields
 
-        scheduleFromInput.addEventListener('change', () => {
-            if (document.querySelector('input[name="mode"]:checked')?.value === 'schedule_at') {
-                recomputeScheduleWindowConstraints();
-            }
-        });
-
-        scheduleUntilInput.addEventListener('change', () => {
-            if (document.querySelector('input[name="mode"]:checked')?.value === 'schedule_at') {
-                recomputeScheduleWindowConstraints();
-            }
-        });
-
-        batchInput.addEventListener('change', () => {
-            if (document.querySelector('input[name="mode"]:checked')?.value === 'schedule_at') {
-                recomputeScheduleWindowConstraints();
-            }
-        });
 
         // Collect selected locations
         function collectPreferredLocations() {
@@ -769,11 +770,20 @@
                 batchMinutes = minutes;
             }
 
+            // NEW: read cloud preference from UI
+            const prefRaw = document.getElementById('cloud-pref')?.value || '';
+            const cloudPreference = prefRaw
+                .split(',')
+                .map(x => x.trim().toLowerCase())
+                .filter(x => x.length > 0);
+
             const policy = {
                 mode: mode,
                 signalType: "co2_moer",
                 preferredLocations: preferredLocations,
-                fallbackLocation: fallbackLocation
+                fallbackLocation: fallbackLocation,
+                // NEW: tie-breaker preference
+                cloudPreference: cloudPreference
             };
 
             if (mode === 'schedule_at') {
@@ -789,7 +799,7 @@
                 policy.batchDurationMinutes = batchMinutes;
             }
 
-            // update globals for the ruler
+            // update globals for the ruler (unchanged)
             lastMode = mode;
             lastWorkloadType = workloadType;
             lastBatchMinutes = batchMinutes;
@@ -801,10 +811,11 @@
                 job: {
                     workloadType: workloadType,
                     cloud: uniqueClouds(preferredLocations),
-                    parameters: { image: "gcr.io/demo/worker:latest" }
+                    parameters: {}
                 }
             };
         }
+
 
         async function callApi(path, body) {
             const resp = await fetch(path, {
@@ -969,6 +980,9 @@
         }
 
         document.getElementById('btn-advise').addEventListener('click', async () => {
+            // Validate schedule window (no-op in run_now mode)
+            if (!validateScheduleWindow()) return;
+
             setLoading(true);
             try {
                 const payload = buildPayload('advise');
@@ -980,6 +994,9 @@
         });
 
         document.getElementById('btn-schedule').addEventListener('click', async () => {
+            // Validate schedule window (no-op in run_now mode)
+            if (!validateScheduleWindow()) return;
+
             setLoading(true);
             try {
                 const payload = buildPayload('schedule');
@@ -989,6 +1006,7 @@
                 setLoading(false);
             }
         });
+
 
         // Initialize schedule window to [now .. now+10min] rounded to 5-min
         (function initScheduleWindow() {

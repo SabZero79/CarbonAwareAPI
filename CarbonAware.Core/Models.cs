@@ -84,6 +84,7 @@ public record PolicySpec
     public IReadOnlyList<LocationSpec>? PreferredLocations { get; init; }
 
     public int? BatchDurationMinutes { get; init; }
+    public IReadOnlyList<string>? CloudPreference { get; init; }
 }
 
 
