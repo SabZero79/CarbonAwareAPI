@@ -141,7 +141,7 @@ app.MapGet("/debug/watttime-index/{region}", async (
     return Results.Text(body, "application/json");
 });
 
-// --- Favorites API (use LocationSpec: { cloud, region }) ---
+// Favorites API (use LocationSpec: { cloud, region }) ---
 app.MapGet("/favorites", () =>
 {
     if (!System.IO.File.Exists(favoritesPath))
@@ -189,5 +189,5 @@ app.MapDelete("/favorites", () =>
 
 
 app.UseDefaultFiles();   // serves index.html by default
-app.UseStaticFiles();    // serves from wwwroot/
+app.UseStaticFiles();
 app.Run();

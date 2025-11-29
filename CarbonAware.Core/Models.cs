@@ -80,7 +80,7 @@ public record PolicySpec
     public DateTimeOffset ScheduleFrom { get; init; }   // lower bound of window
     public DateTimeOffset ScheduleUntil { get; init; }  // upper bound of window
 
-    // NEW: preferred cloud+region candidates(recommended)
+    // Preferred cloud+region candidates(recommended)
     public IReadOnlyList<LocationSpec>? PreferredLocations { get; init; }
 
     public int? BatchDurationMinutes { get; init; }

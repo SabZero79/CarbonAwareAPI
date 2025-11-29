@@ -49,7 +49,7 @@ public sealed class AdviceRecord
     public string? BestWindowRegion { get; init; }
     public double? BestWindowMoerGPerKwh { get; init; }
     public DateTimeOffset? BestWindowWhen { get; init; }
-    public DateTimeOffset CreatedUtc { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset CreatedUtc { get; init; } 
     public Guid? RequestId { get; init; }
 }
 

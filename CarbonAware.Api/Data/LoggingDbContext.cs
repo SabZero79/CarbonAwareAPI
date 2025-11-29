@@ -116,7 +116,6 @@ public sealed class AdviceCandidateLog
     public string Cloud { get; set; } = default!;
     public string Region { get; set; } = default!;
 
-    // you can log one or both depending on mode
     public double? MoerAtTarget { get; set; }
     public double? BestMoerUntilTarget { get; set; }
     public DateTimeOffset? BestMoerAt { get; set; }

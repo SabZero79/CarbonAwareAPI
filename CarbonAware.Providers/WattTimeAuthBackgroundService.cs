@@ -24,7 +24,7 @@ public sealed class WattTimeAuthBackgroundService : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var wt = scope.ServiceProvider.GetRequiredService<WattTimeProvider>(); // resolved within scope
+            var wt = scope.ServiceProvider.GetRequiredService<WattTimeProvider>();
             await wt.EnsureTokenAsync(stoppingToken);
             _log.LogInformation("WattTime token pre-warm done.");
         }

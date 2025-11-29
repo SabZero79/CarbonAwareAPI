@@ -45,7 +45,6 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         var isBatch = batchMinutes > 0;
 
         // Schedule window [from..until]
-        // For run_now we ignore this, for schedule_at we use it.
         DateTimeOffset windowFrom = policy.ScheduleFrom;
         DateTimeOffset windowUntil = policy.ScheduleUntil;
         
@@ -100,7 +99,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         JobSpec job,
         PolicySpec policy,
         List<(string cloud, string region, string zone)> candidates,
-        DateTimeOffset target,
+        DateTimeOffset now,
         CorrelationContext correlation,
         CancellationToken ct)
     {
@@ -108,7 +107,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
 
         foreach (var (cloud, region, zone) in candidates)
         {
-            var sig = await _signals.GetSignalsAsync(zone, target, marginal: true, ct);
+            var sig = await _signals.GetSignalsAsync(zone, now, marginal: true, ct);
             double? moer =
                 (sig is not null && double.IsFinite(sig.IntensityGPerKwh) && sig.IntensityGPerKwh > 0)
                     ? sig.IntensityGPerKwh
@@ -124,7 +123,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             return new AdviceResult(
                 Cloud: fb.Cloud,
                 Region: fb.Region,
-                When: target,
+                When: now,
                 Rationale: "run_now: no usable MOER for candidates; using fallback " +
                            $"{fb.Cloud}:{fb.Region}",
                 EstimatedIntensityGPerKwh: null
@@ -148,15 +147,15 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         await _audit.LogAdviceAsync(new AdviceRecord
         {
             Mode = "run_now",
-            TargetWhen = target,
+            TargetWhen = now,
             PreferredCloudsCsv = string.Join(",", job.GetEffectiveClouds()),
-            PreferredRegionsCsv = (policy.PreferredRegions is { Count: > 0 })
-                ? string.Join(",", policy.PreferredRegions)
-                : null,
+            PreferredRegionsCsv = policy.PreferredLocations?.Any() == true
+                                ? string.Join(",", policy.PreferredLocations.Select(l => l.Region))
+                                : null,
 
             SelectedCloud = best.cloud,
             SelectedRegion = best.region,
-            SelectedWhen = target,
+            SelectedWhen = now,
             SelectedMoerGPerKwh = ConvertTogperKwh(best.moer),
             Rationale = $"run_now: cleanest now is {best.cloud}:{best.region} ({ConvertTogperKwh(best.moer):F1} g/kWh, via watttime.v3.forecast@now)",
 
@@ -174,13 +173,14 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             BestWindowRegion = null,
             BestWindowMoerGPerKwh = null,
             BestWindowWhen = null,
+            CreatedUtc = now,
             RequestId = correlation.Current
         }, candLog, ct);
 
         return new AdviceResult(
             Cloud: best.cloud,
             Region: best.region,
-            When: target,
+            When: now,
             Rationale: $"run_now: cleanest now is {best.cloud}:{best.region} ({ConvertTogperKwh(best.moer):F1} g/kWh, via watttime.v3.forecast@now)",
             EstimatedIntensityGPerKwh: ConvertTogperKwh(best.moer),
             HighestEmissionCloud: highest.cloud,
@@ -215,9 +215,6 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        // -----------------------------------------
-        // 1. Gather best-per-candidate values
-        // -----------------------------------------
         var perCandidate = new List<(string cloud, string region, double? bestMoer, DateTimeOffset? at)>();
 
         foreach (var (cloud, region, zone) in candidates)
@@ -244,9 +241,6 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             );
         }
 
-        // -----------------------------------------
-        // 2. Use cloud preference to pick winner
-        // -----------------------------------------
         var best = PickBestWithCloudPreference(
             usable,
             x => x.bestMoer,
@@ -259,9 +253,6 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
         double bwMoer = best.bestMoer!.Value;
         DateTimeOffset bwWhen = best.at!.Value;
 
-        // -----------------------------------------
-        // 3. Compute highest + average for summary
-        // -----------------------------------------
         var highestByBest = usable
             .OrderByDescending(x => x.bestMoer!.Value)
             .Select(x => (x.cloud, x.region, x.bestMoer!.Value))
@@ -274,9 +265,6 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
                 ? 100.0 * (avgByBest - bwMoer) / avgByBest
                 : (double?)null;
 
-        // -----------------------------------------
-        // 4. Candidate log
-        // -----------------------------------------
         IEnumerable<AdviceCandidateRecord> candLog = usable.Select(m => new AdviceCandidateRecord
         {
             Cloud = m.cloud,
@@ -285,9 +273,6 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             BestMoerAt = m.at
         });
 
-        // -----------------------------------------
-        // 5. Rationale string
-        // -----------------------------------------
         var localTz = TimeZoneInfo.Local;
         const string RATIONALE_FMT = "yyyy-MM-dd-HH:mm";
 
@@ -308,17 +293,14 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             $"is {bwCloud}:{bwRegion} @ {bwLocalStr} ({ConvertTogperKwh(bwMoer):F1} g/kWh, via watttime.v3.forecast@best-until). " +
             "Savings vs candidates' best-until-target shown below.";
 
-        // -----------------------------------------
-        // 6. Audit log
-        // -----------------------------------------
         await _audit.LogAdviceAsync(new AdviceRecord
         {
             Mode = "schedule_at",
             TargetWhen = until,
             PreferredCloudsCsv = string.Join(",", job.GetEffectiveClouds()),
-            PreferredRegionsCsv = (policy.PreferredRegions is { Count: > 0 })
-                ? string.Join(",", policy.PreferredRegions)
-                : null,
+            PreferredRegionsCsv = policy.PreferredLocations?.Any() == true
+                                ? string.Join(",", policy.PreferredLocations.Select(l => l.Region))
+                                : null,
 
             SelectedCloud = bwCloud,
             SelectedRegion = bwRegion,
@@ -341,12 +323,10 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             BestWindowRegion = bwRegion,
             BestWindowMoerGPerKwh = ConvertTogperKwh(bwMoer),
             BestWindowWhen = bwWhen,
+            CreatedUtc = DateTimeOffset.UtcNow,
             RequestId = correlation.Current
         }, candLog, ct);
 
-        // -----------------------------------------
-        // 7. Return final result
-        // -----------------------------------------
         return new AdviceResult(
             Cloud: bwCloud,
             Region: bwRegion,
@@ -422,9 +402,9 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             Mode = "run_now_batch",
             TargetWhen = now,
             PreferredCloudsCsv = string.Join(",", job.GetEffectiveClouds()),
-            PreferredRegionsCsv = (policy.PreferredRegions is { Count: > 0 })
-                ? string.Join(",", policy.PreferredRegions)
-                : null,
+            PreferredRegionsCsv = policy.PreferredLocations?.Any() == true
+                                ? string.Join(",", policy.PreferredLocations.Select(l => l.Region))
+                                : null,
 
             SelectedCloud = best.cloud,
             SelectedRegion = best.region,
@@ -441,6 +421,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
                 : (double?)null,
             AverageEstimatedSavingPercent = avgSavingPct,
             AverageEmissionGPerKwh = ConvertTogperKwh(avgAll),
+            CreatedUtc = now,
             RequestId = correlation.Current
         }, candLog, ct);
 
@@ -563,9 +544,9 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             Mode = "schedule_at_batch",
             TargetWhen = until,
             PreferredCloudsCsv = string.Join(",", job.GetEffectiveClouds()),
-            PreferredRegionsCsv = (policy.PreferredRegions is { Count: > 0 })
-                ? string.Join(",", policy.PreferredRegions)
-                : null,
+            PreferredRegionsCsv = policy.PreferredLocations?.Any() == true
+                                ? string.Join(",", policy.PreferredLocations.Select(l => l.Region))
+                                : null,
 
             SelectedCloud = best.Cloud,
             SelectedRegion = best.Region,
@@ -585,6 +566,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             BestWindowRegion = best.Region,
             BestWindowMoerGPerKwh = ConvertTogperKwh(bestAvg),
             BestWindowWhen = bestStartUtc,
+            CreatedUtc = DateTimeOffset.UtcNow,
             RequestId = correlation.Current
         }, candLog, ct);
 
@@ -689,7 +671,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
             .Where(c => Math.Abs(moerSelector(c)!.Value - minMoer) <= Eps)
             .ToList();
 
-        // If only one winner or no preference specified → just return first
+        // If only one winner or no preference specified -> just return first
         if (winners.Count == 1 || cloudPreference is null || cloudPreference.Count == 0)
             return winners[0];
 

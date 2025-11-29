@@ -145,7 +145,7 @@ public sealed class WattTimeProvider : ICarbonSignalProvider, IBestWindowSignalP
     }
 
 
-    // ======== V3 DATA HELPERS ========
+    // ======== DATA HELPERS ========
     private async Task<double?> TryGetMoerForecastNowAsync(string region, CancellationToken ct)
     {
         var uri = new Uri(_http.BaseAddress ?? new Uri("https://api.watttime.org"),
@@ -581,7 +581,7 @@ public sealed class WattTimeProvider : ICarbonSignalProvider, IBestWindowSignalP
 
         // We ONLY care about forecast points that begin AFTER scheduleFrom.
         var ordered = points
-            .Where(p => p.Start >= from)       // <-- KEY FIX
+            .Where(p => p.Start >= from)
             .OrderBy(p => p.Start)
             .ToList();
 
@@ -617,7 +617,6 @@ public sealed class WattTimeProvider : ICarbonSignalProvider, IBestWindowSignalP
 
         return (bestAvg, bestStart, horizonHours);
     }
-
 
     private static string? Truncate(string? s, int max)
     => s is null ? null : (s.Length <= max ? s : s.Substring(0, max));
