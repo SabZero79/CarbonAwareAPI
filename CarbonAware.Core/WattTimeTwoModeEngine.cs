@@ -692,7 +692,7 @@ public sealed class WattTimeTwoModeEngine : IPolicyEngine
 
     private double? ConvertTogperKwh(double? lbsperMwh)
     {
-        return lbsperMwh * 0.45359237 / 1000.0;
+        return lbsperMwh * 0.45359237;
     }
 
 }

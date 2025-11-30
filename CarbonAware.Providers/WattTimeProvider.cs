@@ -65,7 +65,6 @@ public sealed class WattTimeProvider : ICarbonSignalProvider, IBestWindowSignalP
 
 
     // ======== AUTH ========
-
     /// <summary>Ensures there is a valid Bearer token (login at /login, cache for TokenCacheMinutes).</summary>
     public async Task EnsureTokenAsync(CancellationToken ct = default)
     {
